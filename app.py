@@ -1,15 +1,41 @@
 import os
 import re
+import shutil
 import subprocess
+import time
 import yt_dlp
 from flask import Flask, render_template, request, send_file, jsonify
 import tempfile
 
 app = Flask(__name__, template_folder='templates')
 
-DOWNLOADS_FOLDER = os.path.join(os.environ.get('USERPROFILE', ''), 'Downloads')
-TEMP_DIR = os.path.join(os.environ.get('USERPROFILE', ''), 'AppData', 'Local', 'Temp', 'video_converter')
-os.makedirs(TEMP_DIR, exist_ok=True)
+# Portable across Windows (local dev) and Linux (Vercel functions).
+TEMP_BASE = os.path.join(tempfile.gettempdir(), 'video_converter')
+
+
+def _fresh_workdir():
+    """Per-request temp dir: safe for concurrent serverless invocations.
+    Purges workdirs older than 2h; each request only touches its own dir."""
+    os.makedirs(TEMP_BASE, exist_ok=True)
+    now = time.time()
+    for name in os.listdir(TEMP_BASE):
+        p = os.path.join(TEMP_BASE, name)
+        try:
+            if now - os.path.getmtime(p) > 7200:
+                shutil.rmtree(p, ignore_errors=True)
+        except OSError:
+            pass
+    return tempfile.mkdtemp(prefix='dl_', dir=TEMP_BASE)
+
+
+def ffmpeg_exe():
+    """System ffmpeg if present (local), else the bundled imageio-ffmpeg
+    binary (Vercel has no ffmpeg on PATH)."""
+    exe = shutil.which('ffmpeg')
+    if exe:
+        return exe
+    import imageio_ffmpeg
+    return imageio_ffmpeg.get_ffmpeg_exe()
 
 @app.route('/')
 def index():
@@ -32,7 +58,7 @@ def find_downloaded_file(ydl, info):
 
 def video_codec(path):
     """Return the video codec name (e.g. h264, vp9) or None for audio-only."""
-    p = subprocess.run(['ffmpeg', '-i', path],
+    p = subprocess.run([ffmpeg_exe(), '-i', path],
                        capture_output=True, text=True, errors='replace')
     m = re.search(r'Video:\s*([a-z0-9_]+)', p.stderr)
     return m.group(1) if m else None
@@ -43,7 +69,7 @@ def reencode_to_h264(src):
     base = os.path.splitext(src)[0]
     dst = base + '.h264.mp4'
     subprocess.run([
-        'ffmpeg', '-y', '-i', src,
+        ffmpeg_exe(), '-y', '-i', src,
         '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '21',
         '-c:a', 'aac', '-b:a', '192k',
         '-movflags', '+faststart',
@@ -60,7 +86,7 @@ def convert_to_mp3(src, title):
     if os.path.abspath(src) == os.path.abspath(dst):
         return src
     subprocess.run([
-        'ffmpeg', '-y', '-i', src, '-vn',
+        ffmpeg_exe(), '-y', '-i', src, '-vn',
         '-c:a', 'libmp3lame', '-q:a', '0',
         '-id3v2_version', '3',
         '-metadata', f'title={title}',
@@ -83,16 +109,11 @@ def download():
     
     print(f'[download-start] format={fmt} url={url}', flush=True)
     try:
-        # Clean up any previous files (skip locked/stale ones)
-        for f in os.listdir(TEMP_DIR):
-            try:
-                os.remove(os.path.join(TEMP_DIR, f))
-            except OSError:
-                pass
+        workdir = _fresh_workdir()
         
         if fmt == 'mp3':
             ydl_opts = {
-                'outtmpl': os.path.join(TEMP_DIR, '%(title)s.%(ext)s'),
+                'outtmpl': os.path.join(workdir, '%(title)s.%(ext)s'),
                 'format': 'bestaudio[ext=m4a]/bestaudio/best',
                 'quiet': True,
                 'no_warnings': True,
@@ -100,7 +121,7 @@ def download():
         else:
             # Prefer H.264/MP4 (avc1) sources so no re-encode is needed
             ydl_opts = {
-                'outtmpl': os.path.join(TEMP_DIR, '%(title)s.%(ext)s'),
+                'outtmpl': os.path.join(workdir, '%(title)s.%(ext)s'),
                 'format': ('bestvideo[ext=mp4][vcodec^=avc1]+bestaudio[ext=m4a]/'
                            'bestvideo[ext=mp4]+bestaudio/'
                            'bestvideo[ext=mp4]/'
