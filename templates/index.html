@@ -184,8 +184,120 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
+            flex-wrap: wrap;
             gap: 12px;
             margin-top: 20px;
+        }
+
+        .file-row {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 14px;
+        }
+
+        input[type="file"] {
+            font: inherit;
+            font-size: 13px;
+            color: var(--muted);
+            max-width: 100%;
+        }
+
+        input[type="file"]::file-selector-button {
+            height: 34px;
+            padding: 0 14px;
+            margin-right: 2px;
+            border: 1.5px solid var(--line);
+            border-radius: 999px;
+            background: var(--paper);
+            font: inherit;
+            font-size: 12px;
+            font-weight: 800;
+            color: var(--ink);
+            cursor: pointer;
+            transition: background-color 200ms ease, border-color 200ms ease;
+        }
+
+        @media (hover: hover) {
+            input[type="file"]::file-selector-button:hover {
+                background: #F3F1F8;
+                border-color: #D9D5E4;
+            }
+        }
+
+        .file-hint {
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .segmented.tight .seg {
+            min-width: 0;
+            padding: 0 11px;
+            font-size: 12px;
+            letter-spacing: 0.02em;
+        }
+
+        .pack-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            margin-top: 18px;
+        }
+
+        #packChk {
+            appearance: none;
+            -webkit-appearance: none;
+            flex: none;
+            width: 20px;
+            height: 20px;
+            margin: 1px 0 0;
+            border: 1.5px solid var(--line);
+            border-radius: 6px;
+            background: var(--paper);
+            cursor: pointer;
+            position: relative;
+            transition: background-color 160ms ease, border-color 160ms ease;
+        }
+
+        #packChk:checked {
+            background: var(--violet);
+            border-color: var(--violet-dark);
+        }
+
+        #packChk:checked::after {
+            content: "";
+            position: absolute;
+            left: 5.5px;
+            top: 2px;
+            width: 5px;
+            height: 9px;
+            border: solid #FFFFFF;
+            border-width: 0 2.5px 2.5px 0;
+            transform: rotate(45deg);
+        }
+
+        #packChk:focus-visible {
+            outline: 2px solid var(--violet);
+            outline-offset: 2px;
+        }
+
+        .pack-row label {
+            font-size: 13px;
+            font-weight: 800;
+            letter-spacing: -0.01em;
+            text-transform: none;
+            color: var(--ink);
+            margin: 0;
+            cursor: pointer;
+        }
+
+        .pack-hint {
+            display: block;
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--muted);
+            margin-top: 2px;
         }
 
         .fmt-label {
@@ -436,12 +548,29 @@
                    spellcheck="false" placeholder="Paste any video link…"
                    aria-describedby="urlHelp" required>
             <p class="helper" id="urlHelp">Works with any supported platform, no limits.</p>
+            <div class="file-row">
+                <input type="file" id="pageFile" accept=".devtools,.html,.htm,text/html">
+                <span class="file-hint">or upload a saved page export (signed streams)</span>
+            </div>
             <div class="format-row">
                 <span class="fmt-label" id="formatLabel">Format</span>
-                <div class="segmented" role="group" aria-labelledby="formatLabel">
-                    <button type="button" class="seg is-active" data-format="mp4" aria-pressed="true">MP4</button>
-                    <button type="button" class="seg" data-format="mp3" aria-pressed="false">MP3</button>
+                <div class="segmented" id="formatGroup" role="group" aria-labelledby="formatLabel">
+                    <button type="button" class="seg is-active" data-value="mp4" aria-pressed="true">MP4</button>
+                    <button type="button" class="seg" data-value="mp3" aria-pressed="false">MP3</button>
                 </div>
+            </div>
+            <div class="format-row" id="qualityRow">
+                <span class="fmt-label" id="qualityLabel">Quality</span>
+                <div class="segmented tight" id="qualityGroup" role="group" aria-labelledby="qualityLabel">
+                    <button type="button" class="seg is-active" data-value="auto" aria-pressed="true">Auto</button>
+                    <button type="button" class="seg" data-value="1080" aria-pressed="false">1080p</button>
+                    <button type="button" class="seg" data-value="720" aria-pressed="false">720p</button>
+                    <button type="button" class="seg" data-value="480" aria-pressed="false">480p</button>
+                </div>
+            </div>
+            <div class="pack-row" id="packRow">
+                <input type="checkbox" id="packChk">
+                <label for="packChk">Analysis pack <span class="pack-hint">480p copy + 1fps frames, downloads as a ZIP</span></label>
             </div>
             <button type="submit" id="submitBtn">
                 <span id="btnLabel">Download MP4</span>
@@ -469,28 +598,44 @@
 
         const btnLabel = document.getElementById('btnLabel');
         const btnDisc = document.getElementById('btnDisc');
-        const segs = Array.from(document.querySelectorAll('.seg'));
+        const qualityRow = document.getElementById('qualityRow');
+        const packRow = document.getElementById('packRow');
+        const packChk = document.getElementById('packChk');
+        const pageFile = document.getElementById('pageFile');
 
         const ICON_DOWNLOAD = btnDisc.innerHTML;
         const ICON_MUSIC = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>';
 
         let format = 'mp4';
+        let quality = 'auto';
 
         function loadingVerb() {
             return format === 'mp3' ? 'Extracting audio' : 'Fetching and converting';
         }
 
-        segs.forEach(seg => {
-            seg.addEventListener('click', () => {
-                format = seg.dataset.format;
+        function wireGroup(container, onPick) {
+            const segs = Array.from(container.querySelectorAll('.seg'));
+            segs.forEach(seg => seg.addEventListener('click', () => {
                 segs.forEach(s => {
                     const on = s === seg;
                     s.classList.toggle('is-active', on);
                     s.setAttribute('aria-pressed', String(on));
                 });
-                btnLabel.textContent = 'Download ' + format.toUpperCase();
-                btnDisc.innerHTML = format === 'mp3' ? ICON_MUSIC : ICON_DOWNLOAD;
-            });
+                onPick(seg.dataset.value);
+            }));
+        }
+
+        wireGroup(document.getElementById('formatGroup'), v => {
+            format = v;
+            btnLabel.textContent = 'Download ' + format.toUpperCase();
+            btnDisc.innerHTML = format === 'mp3' ? ICON_MUSIC : ICON_DOWNLOAD;
+            const mp4 = format === 'mp4';
+            qualityRow.style.display = mp4 ? '' : 'none';
+            packRow.style.display = mp4 ? '' : 'none';
+        });
+
+        wireGroup(document.getElementById('qualityGroup'), v => {
+            quality = v;
         });
 
         const ICON_SPINNER = '<span class="spin dark" aria-hidden="true"></span>';
@@ -500,6 +645,13 @@
         let tickTimer = null;
         let lastObjectUrl = null;
         let statusText = null;
+        let jobId = null;
+
+        function newJobId() {
+            return (window.crypto && crypto.randomUUID)
+                ? crypto.randomUUID()
+                : 'j' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+        }
 
         function setStatus(type, text) {
             if (status.dataset.type !== type) {
@@ -530,11 +682,27 @@
                 s.setAttribute('aria-hidden', 'true');
                 btn.prepend(s);
             }
+            jobId = newJobId();
             const started = Date.now();
             setStatus('loading', `${loadingVerb()}… 0s`);
-            tickTimer = setInterval(() => {
+            tickTimer = setInterval(async () => {
                 const s = Math.floor((Date.now() - started) / 1000);
-                setStatus('loading', `${loadingVerb()}… ${s}s`);
+                let text = `${loadingVerb()}… ${s}s`;
+                try {
+                    const r = await fetch('/progress/' + encodeURIComponent(jobId));
+                    if (r.ok) {
+                        const p = await r.json();
+                        if (p.stage === 'download') {
+                            text = 'Downloading…'
+                                + (p.pct != null ? ' ' + p.pct + '%' : '')
+                                + (p.speed ? ' · ' + p.speed : '')
+                                + (p.eta != null ? ' · eta ' + p.eta + 's' : '');
+                        } else if (p.stage === 'processing') {
+                            text = `Processing… ${s}s`;
+                        }
+                    }
+                } catch (e) {}
+                setStatus('loading', text);
             }, 1000);
         }
 
@@ -565,10 +733,11 @@
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
 
-            const url = normalizeUrl(input.value);
-            if (!url) {
+            const file = pageFile.files[0];
+            let url = normalizeUrl(input.value);
+            if (!url && !file) {
                 input.setAttribute('aria-invalid', 'true');
-                urlHelp.textContent = 'Paste a link first.';
+                urlHelp.textContent = 'Paste a link first (or upload a saved page export).';
                 urlHelp.style.color = 'var(--danger)';
                 input.focus();
                 return;
@@ -583,10 +752,22 @@
             startLoading();
 
             try {
+                if (file) {
+                    setStatus('loading', 'Reading page export…');
+                    const fd = new FormData();
+                    fd.append('page', file);
+                    const up = await fetch('/upload', { method: 'POST', body: fd });
+                    const udata = await up.json().catch(() => null);
+                    if (!up.ok || !udata || !udata.url) {
+                        throw new Error((udata && udata.error) || 'No video URL found in that file.');
+                    }
+                    url = udata.url;
+                }
+
                 const response = await fetch('/download', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ url, format })
+                    body: JSON.stringify({ url, format, quality, pack: packChk.checked, job_id: jobId })
                 });
 
                 const contentType = (response.headers.get('Content-Type') || '').toLowerCase();
@@ -602,6 +783,7 @@
 
                 const blob = await response.blob();
                 const filename = filenameFromDisposition(response.headers.get('Content-Disposition'));
+                const warn = response.headers.get('X-Warning');
 
                 lastObjectUrl = URL.createObjectURL(blob);
                 const a = document.createElement('a');
@@ -615,7 +797,8 @@
                 againLink.download = filename;
                 again.classList.add('show');
                 stopLoading();
-                setStatus('success', 'Saved to your Downloads folder — ' + filename);
+                setStatus('success', 'Saved to your Downloads folder — ' + filename
+                    + (warn ? ' · ' + warn : ''));
             } catch (err) {
                 stopLoading();
                 const msg = (err && err.message) || 'Something went wrong.';
