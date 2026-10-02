@@ -534,7 +534,158 @@
             }
             .spin { border-top-color: #FFFFFF; border-right-color: #FFFFFF; }
         }
-    </style>
+
+        /* Modal */
+        .modal {
+            position: fixed;
+            inset: 0;
+            z-index: 100;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+        }
+        .modal.show { display: flex; }
+        .modal-backdrop {
+            position: absolute;
+            inset: 0;
+            background: rgba(37, 27, 56, 0.5);
+            backdrop-filter: blur(2px);
+        }
+        .modal-content {
+            position: relative;
+            z-index: 1;
+            width: 100%;
+            max-width: 520px;
+            max-height: 80vh;
+            background: var(--paper);
+            border-radius: 20px;
+            box-shadow: 0 24px 60px rgba(37, 27, 56, 0.2);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--line);
+        }
+        .modal-header h2 {
+            margin: 0;
+            font-size: 16px;
+            font-weight: 800;
+            color: var(--ink);
+        }
+        .modal-close {
+            width: 32px;
+            height: 32px;
+            border: none;
+            background: transparent;
+            color: var(--muted);
+            font-size: 24px;
+            cursor: pointer;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-close:hover { background: var(--violet-wash); color: var(--violet); }
+        .modal-body {
+            padding: 12px 16px;
+            overflow-y: auto;
+            max-height: 50vh;
+        }
+        .playlist-select-all {
+            padding: 8px 0;
+            border-bottom: 1px solid var(--line);
+        }
+        .playlist-select-all label {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--ink);
+            cursor: pointer;
+        }
+        .playlist-items {
+            list-style: none;
+            margin: 0;
+            padding: 8px 0 0;
+        }
+        .playlist-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 4px;
+            border-bottom: 1px solid var(--line);
+        }
+        .playlist-item:last-child { border-bottom: none; }
+        .playlist-item input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            accent-color: var(--violet);
+            flex-shrink: 0;
+        }
+        .playlist-item-thumb {
+            width: 60px;
+            height: 34px;
+            border-radius: 6px;
+            object-fit: cover;
+            flex-shrink: 0;
+            background: var(--line);
+        }
+        .playlist-item-info {
+            flex: 1;
+            min-width: 0;
+        }
+        .playlist-item-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--ink);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .playlist-item-duration {
+            font-size: 11px;
+            color: var(--muted);
+            margin-top: 2px;
+        }
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            padding: 12px 16px;
+            border-top: 1px solid var(--line);
+        }
+        .btn-secondary, .btn-primary {
+            height: 40px;
+            padding: 0 20px;
+            border-radius: 999px;
+            font: inherit;
+            font-size: 13px;
+            font-weight: 800;
+            cursor: pointer;
+            transition: background-color 150ms ease;
+        }
+        .btn-secondary {
+            background: var(--paper);
+            color: var(--ink);
+            border: 1.5px solid var(--line);
+        }
+        .btn-secondary:hover { background: var(--violet-wash); border-color: var(--violet); color: var(--violet); }
+        .btn-primary {
+            background: var(--violet);
+            color: #fff;
+            border: none;
+            box-shadow: 0 2px 0 var(--violet-dark);
+        }
+        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-primary:hover:not(:disabled) { background: #6A4BE0; }
+</style>
 </head>
 <body>
     <main class="card">
@@ -584,6 +735,30 @@
         <div id="again" class="again"><a href="#" id="againLink" download>Download again</a></div>
     </main>
 
+    <!-- Playlist selection modal -->
+    <div id="playlistModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="playlistTitle">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content">
+            <header class="modal-header">
+                <h2 id="playlistTitle">Select videos to download</h2>
+                <button class="modal-close" aria-label="Close">&times;</button>
+            </header>
+            <div class="modal-body">
+                <div class="playlist-select-all">
+                    <label>
+                        <input type="checkbox" id="selectAll">
+                        <span>Select all</span>
+                    </label>
+                </div>
+                <ul id="playlistItems" class="playlist-items"></ul>
+            </div>
+            <footer class="modal-footer">
+                <button type="button" class="btn-secondary" id="cancelPlaylist">Cancel</button>
+                <button type="button" class="btn-primary" id="confirmPlaylist" disabled>Download selected</button>
+            </footer>
+        </div>
+    </div>
+
     <footer class="credit">Crafted by <a href="https://github.com/Henoch4" target="_blank" rel="noopener noreferrer">Henøch</a></footer>
 
     <script>
@@ -608,6 +783,18 @@
 
         let format = 'mp4';
         let quality = 'auto';
+
+        // Playlist state
+        let playlistData = null;
+        let playlistCheckTimer = null;
+
+        // Modal elements
+        const playlistModal = document.getElementById('playlistModal');
+        const playlistItems = document.getElementById('playlistItems');
+        const selectAll = document.getElementById('selectAll');
+        const cancelPlaylist = document.getElementById('cancelPlaylist');
+        const confirmPlaylist = document.getElementById('confirmPlaylist');
+        const modalClose = playlistModal.querySelector('.modal-close');
 
         function loadingVerb() {
             return format === 'mp3' ? 'Extracting audio' : 'Fetching and converting';
@@ -636,6 +823,110 @@
 
         wireGroup(document.getElementById('qualityGroup'), v => {
             quality = v;
+        });
+
+        // Playlist detection & modal
+        function debounce(fn, ms) {
+            let timer;
+            return (...args) => { clearTimeout(timer); timer = setTimeout(() => fn(...args), ms); };
+        }
+
+        function checkPlaylist(url) {
+            if (!url) return Promise.resolve(false);
+            return fetch('/playlist-info', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.is_playlist && data.entries?.length > 1) {
+                    showPlaylistModal(data);
+                    return true;
+                }
+                return false;
+            })
+            .catch(() => false);
+        }
+
+        const debouncedCheck = debounce(checkPlaylist, 800);
+
+        // Check on input blur/paste
+        input.addEventListener('blur', () => {
+            const url = normalizeUrl(input.value);
+            if (url) debouncedCheck(url);
+        });
+        input.addEventListener('paste', () => {
+            setTimeout(() => {
+                const url = normalizeUrl(input.value);
+                if (url) debouncedCheck(url);
+            }, 50);
+        });
+
+        function showPlaylistModal(data) {
+            playlistData = data;
+            document.getElementById('playlistTitle').textContent = data.playlist_title || 'Select videos';
+            playlistItems.innerHTML = data.entries.map((e, i) => `
+                <li class="playlist-item" data-index="${e.index}">
+                    <input type="checkbox" ${i === 0 ? 'checked' : ''}>
+                    ${e.thumbnail ? `<img class="playlist-item-thumb" src="${e.thumbnail}" alt="">` : ''}
+                    <div class="playlist-item-info">
+                        <div class="playlist-item-title">${e.title}</div>
+                        ${e.duration ? `<div class="playlist-item-duration">${formatDuration(e.duration)}</div>` : ''}
+                    </div>
+                </li>
+            `).join('');
+            updateConfirmButton();
+            playlistModal.classList.add('show');
+        }
+
+        function formatDuration(sec) {
+            if (!sec) return '';
+            const m = Math.floor(sec / 60);
+            const s = Math.floor(sec % 60).toString().padStart(2, '0');
+            return `${m}:${s}`;
+        }
+
+        function getSelectedIndices() {
+            return Array.from(playlistItems.querySelectorAll('input:checked'))
+                .map(cb => parseInt(cb.closest('.playlist-item').dataset.index, 10));
+        }
+
+        function updateConfirmButton() {
+            const count = playlistItems.querySelectorAll('input:checked').length;
+            confirmPlaylist.disabled = count === 0;
+            confirmPlaylist.textContent = count === 1 ? 'Download video' : `Download ${count} videos`;
+        }
+
+        function closePlaylistModal() {
+            playlistModal.classList.remove('show');
+            playlistData = null;
+            playlistItems.innerHTML = '';
+        }
+
+        // Modal event listeners
+        selectAll.addEventListener('change', () => {
+            playlistItems.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = selectAll.checked);
+            updateConfirmButton();
+        });
+
+        playlistItems.addEventListener('change', () => {
+            const all = playlistItems.querySelectorAll('input[type="checkbox"]');
+            const checked = playlistItems.querySelectorAll('input:checked');
+            selectAll.checked = all.length === checked.length;
+            selectAll.indeterminate = checked.length > 0 && checked.length < all.length;
+            updateConfirmButton();
+        });
+
+        cancelPlaylist.addEventListener('click', closePlaylistModal);
+        modalClose.addEventListener('click', closePlaylistModal);
+        playlistModal.querySelector('.modal-backdrop').addEventListener('click', closePlaylistModal);
+
+        confirmPlaylist.addEventListener('click', () => {
+            closePlaylistModal();
+            // Trigger form submit with selected data
+            const event = new Event('submit', { cancelable: true });
+            form.dispatchEvent(event);
         });
 
         const ICON_SPINNER = '<span class="spin dark" aria-hidden="true"></span>';
@@ -764,10 +1055,21 @@
                     url = udata.url;
                 }
 
+                // Check for playlist first (if not already handled by modal)
+                if (!playlistData) {
+                    const isPlaylist = await checkPlaylist(url);
+                    if (isPlaylist) return; // Modal will handle download
+                }
+
+                const body = { url, format, quality, pack: packChk.checked, job_id: jobId };
+                if (playlistData) {
+                    body.selected = getSelectedIndices();
+                }
+
                 const response = await fetch('/download', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ url, format, quality, pack: packChk.checked, job_id: jobId })
+                    body: JSON.stringify(body)
                 });
 
                 const contentType = (response.headers.get('Content-Type') || '').toLowerCase();

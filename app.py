@@ -47,7 +47,9 @@ def ffmpeg_exe():
 
 
 def find_downloaded_file(ydl, info):
-    """yt-dlp may change the extension when merging - locate the real file."""
+    """yt-dlp may change the extension when merging - locate the real file.
+    Handles both single videos and playlists (e.g. X/Twitter status URLs)."""
+    # Single video case
     for d in info.get('requested_downloads') or []:
         if d.get('filepath') and os.path.exists(d['filepath']):
             return d['filepath']
@@ -58,6 +60,26 @@ def find_downloaded_file(ydl, info):
     for ext in ('.mp4', '.webm', '.mkv', '.m4a', '.opus', '.mp3'):
         if os.path.exists(base + ext):
             return base + ext
+    
+    # Playlist case: check entries (e.g. X/Twitter status with multiple videos)
+    if info.get('_type') == 'playlist' and info.get('entries'):
+        for entry in info['entries']:
+            if not entry:
+                continue
+            for d in entry.get('requested_downloads') or []:
+                if d.get('filepath') and os.path.exists(d['filepath']):
+                    return d['filepath']
+            # Fallback: try prepare_filename on the entry
+            try:
+                entry_path = ydl.prepare_filename(entry)
+                if os.path.exists(entry_path):
+                    return entry_path
+                base = os.path.splitext(entry_path)[0]
+                for ext in ('.mp4', '.webm', '.mkv', '.m4a', '.opus', '.mp3'):
+                    if os.path.exists(base + ext):
+                        return base + ext
+            except Exception:
+                pass
     return None
 
 
@@ -203,8 +225,12 @@ def _progress_hook(job_id):
     return hook
 
 
-def do_download(url, fmt, quality, pack, job_id):
-    """Run the full pipeline; returns a Flask response or raises ValueError."""
+def do_download(url, fmt, quality, pack, job_id, selected=None):
+    """Run the full pipeline; returns a Flask response or raises ValueError.
+    
+    Args:
+        selected: list of entry indices to download (for playlists). None = first only.
+    """
     warnings = []
     state, msg = policy_info(url)
     if state == 'expired':
@@ -232,14 +258,38 @@ def do_download(url, fmt, quality, pack, job_id):
     if job_id:
         ydl_opts['progress_hooks'] = [_progress_hook(job_id)]
 
+    # Handle playlist selection
+    download_url = url
+    if selected is not None:
+        # Fetch playlist to get selected entry URLs
+        with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
+            info = ydl.extract_info(url, download=False)
+        if info.get('_type') == 'playlist' and info.get('entries'):
+            urls = []
+            for idx in selected:
+                if 0 <= idx < len(info['entries']) and info['entries'][idx]:
+                    entry_url = info['entries'][idx].get('webpage_url')
+                    if entry_url:
+                        urls.append(entry_url)
+            if len(urls) == 1:
+                download_url = urls[0]
+            elif len(urls) > 1:
+                # Multiple: download each and zip
+                return download_multiple(urls, fmt, quality, pack, job_id, workdir)
+
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=True)
+        info = ydl.extract_info(download_url, download=True)
         downloaded = find_downloaded_file(ydl, info)
 
     if not downloaded:
         raise RuntimeError('Download failed')
 
-    title = info.get('title', 'video')
+    # For playlists, use the first entry's title
+    if info.get('_type') == 'playlist' and info.get('entries'):
+        first_entry = next((e for e in info['entries'] if e), None)
+        title = first_entry.get('title', 'video') if first_entry else 'video'
+    else:
+        title = info.get('title', 'video')
 
     if fmt == 'mp3':
         resp = send_file(
@@ -288,6 +338,57 @@ def index():
     return render_template('index.html')
 
 
+def download_multiple(urls, fmt, quality, pack, job_id, workdir):
+    """Download multiple videos and return as ZIP."""
+    if fmt == 'mp3':
+        ydl_opts = {
+            'outtmpl': os.path.join(workdir, '%(title)s.%(ext)s'),
+            'format': 'bestaudio[ext=m4a]/bestaudio/best',
+            'quiet': True,
+            'no_warnings': True,
+        }
+    else:
+        ydl_opts = {
+            'outtmpl': os.path.join(workdir, '%(title)s.%(ext)s'),
+            'format': video_format(None if quality == 'auto' else int(quality)),
+            'quiet': True,
+            'no_warnings': True,
+            'merge_output_format': 'mp4',
+        }
+    if job_id:
+        ydl_opts['progress_hooks'] = [_progress_hook(job_id)]
+
+    downloaded_files = []
+    warnings = []
+    
+    for i, url in enumerate(urls):
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            downloaded = find_downloaded_file(ydl, info)
+            if downloaded:
+                downloaded_files.append(downloaded)
+    
+    if not downloaded_files:
+        raise RuntimeError('Download failed')
+    
+    # Create ZIP
+    import zipfile
+    zip_path = os.path.join(workdir, 'playlist.zip')
+    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as z:
+        for f in downloaded_files:
+            z.write(f, os.path.basename(f))
+    
+    resp = send_file(
+        zip_path,
+        as_attachment=True,
+        download_name='playlist.zip',
+        mimetype='application/zip'
+    )
+    if warnings:
+        resp.headers['X-Warning'] = ' · '.join(warnings)
+    return resp
+
+
 @app.route('/progress/<job_id>')
 def progress(job_id):
     return jsonify(PROGRESS.get(job_id, {}))
@@ -307,6 +408,44 @@ def upload_page():
     return jsonify({'url': urls[0], 'found': len(urls)})
 
 
+@app.route('/playlist-info', methods=['POST'])
+def playlist_info():
+    """Extract playlist metadata for UI selection."""
+    data = request.get_json()
+    url = data.get('url', '').strip()
+    
+    if not url:
+        return jsonify({'error': 'No URL provided'}), 400
+    
+    try:
+        with yt_dlp.YoutubeDL({'quiet': True, 'extract_flat': False}) as ydl:
+            info = ydl.extract_info(url, download=False)
+        
+        if info.get('_type') != 'playlist' or not info.get('entries'):
+            return jsonify({'is_playlist': False})
+        
+        entries = []
+        for i, entry in enumerate(info['entries']):
+            if not entry:
+                continue
+            entries.append({
+                'index': i,
+                'id': entry.get('id'),
+                'title': entry.get('title', f'Video {i+1}'),
+                'thumbnail': entry.get('thumbnail'),
+                'duration': entry.get('duration'),
+                'webpage_url': entry.get('webpage_url'),
+            })
+        
+        return jsonify({
+            'is_playlist': True,
+            'playlist_title': info.get('title', 'Playlist'),
+            'entries': entries,
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/download', methods=['POST'])
 def download():
     data = request.get_json()
@@ -315,7 +454,9 @@ def download():
     quality = str(data.get('quality') or 'auto').strip().lower()
     pack = bool(data.get('pack'))
     job_id = (data.get('job_id') or '').strip()
-
+    # For playlists: list of selected entry indices
+    selected = data.get('selected', None)
+    
     if not url:
         return jsonify({'error': 'No URL provided'}), 400
     if fmt not in ('mp4', 'mp3'):
@@ -323,10 +464,10 @@ def download():
     if quality not in ('auto', '1080', '720', '480'):
         return jsonify({'error': 'Unsupported quality'}), 400
 
-    print(f'[download-start] format={fmt} quality={quality} pack={pack} url={url}',
+    print(f'[download-start] format={fmt} quality={quality} pack={pack} selected={selected} url={url}',
           flush=True)
     try:
-        return do_download(url, fmt, quality, pack, job_id)
+        return do_download(url, fmt, quality, pack, job_id, selected)
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
     except Exception as e:
