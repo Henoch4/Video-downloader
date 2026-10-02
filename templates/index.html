@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Downloader</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,200..800&family=Manrope:wght@400..800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bone: #F6F1E7;
+            --paper: #FFFFFF;
+            --ink: #251B38;
+            --muted: #787383;
+            --line: #EAE8EF;
+            --violet: #7455E8;
+            --violet-dark: #5336BA;
+            --violet-wash: #F0ECFD;
+            --yellow: #FFC845;
+            --gain: #087957;
+            --gain-wash: #DCF2E8;
+            --danger: #B42318;
+            --danger-wash: #FFE8E6;
+            --font-display: "Bricolage Grotesque", Arial, sans-serif;
+            --font-body: Manrope, Arial, sans-serif;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            font-family: var(--font-body);
+            font-weight: 500;
+            letter-spacing: -0.02em;
+            color: var(--ink);
+            background: var(--bone);
+            -webkit-font-smoothing: antialiased;
+            -webkit-text-size-adjust: 100%;
+            text-size-adjust: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            min-height: 100dvh;
+            padding: max(24px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+            position: relative;
+        }
+
+        /* Graph-paper grid, fading out (useplinth signature) */
+        body::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(37, 27, 56, 0.05) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(37, 27, 56, 0.05) 1px, transparent 1px);
+            background-size: 64px 64px;
+            -webkit-mask-image: radial-gradient(ellipse at center, black 25%, transparent 80%);
+            mask-image: radial-gradient(ellipse at center, black 25%, transparent 80%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        ::selection { background: var(--yellow); color: var(--ink); }
+
+        .card {
+            position: relative;
+            z-index: 1;
+            width: 100%;
+            max-width: 520px;
+            background: var(--paper);
+            border-radius: clamp(20px, 5vw, 28px);
+            padding: clamp(22px, 5.5vw, 40px);
+            box-shadow:
+                inset 0 0 0 1.5px var(--line),
+                0 24px 60px rgba(37, 27, 56, 0.10);
+        }
+
+        /* Staggered fade-ups (useplinth) */
+        .card > * {
+            animation: fadeUp 620ms cubic-bezier(0.22, 0.72, 0.2, 1) both;
+        }
+        .card > *:nth-child(1) { animation-delay: 0ms; }
+        .card > *:nth-child(2) { animation-delay: 90ms; }
+        .card > *:nth-child(3) { animation-delay: 140ms; }
+        .card > *:nth-child(4) { animation-delay: 210ms; }
+        .card > *:nth-child(5) { animation-delay: 280ms; }
+        .card > *:nth-child(6) { animation-delay: 350ms; }
+
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(18px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        .chip {
+            display: inline-flex;
+            align-items: center;
+            height: 26px;
+            padding: 0 12px;
+            background: var(--yellow);
+            box-shadow: inset 0 0 0 1.5px var(--ink);
+            border-radius: 13px;
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--ink);
+            margin-bottom: 18px;
+        }
+
+        h1 {
+            margin: 0 0 8px;
+            font-family: var(--font-display);
+            font-size: clamp(30px, 8.5vw, 42px);
+            line-height: 1.04;
+            font-weight: 800;
+            letter-spacing: -0.04em;
+            color: var(--ink);
+        }
+
+        .sub {
+            margin: 0 0 26px;
+            font-size: 15px;
+            line-height: 1.5;
+            letter-spacing: -0.015em;
+            color: var(--muted);
+        }
+
+        label {
+            display: block;
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.09em;
+            text-transform: uppercase;
+            color: var(--ink);
+            margin-bottom: 8px;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            height: 54px;
+            padding: 0 18px;
+            font: inherit;
+            font-size: 16px;
+            font-weight: 600;
+            letter-spacing: -0.01em;
+            color: var(--ink);
+            background: var(--paper);
+            border: 1.5px solid var(--line);
+            border-radius: 18px;
+            transition: border-color 200ms ease, box-shadow 200ms ease;
+        }
+
+        input[type="text"]::placeholder {
+            color: var(--muted);
+            font-weight: 500;
+        }
+
+        @media (hover: hover) {
+            input[type="text"]:hover { border-color: #D9D5E4; }
+        }
+
+        input[type="text"]:focus-visible {
+            outline: 2px solid var(--violet);
+            outline-offset: 2px;
+            border-color: var(--violet);
+        }
+
+        input[type="text"][aria-invalid="true"] {
+            border-color: var(--danger);
+        }
+
+        .helper {
+            margin: 8px 2px 0;
+            font-size: 13px;
+            line-height: 1.5;
+            color: var(--muted);
+        }
+
+        .format-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-top: 20px;
+        }
+
+        .fmt-label {
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.09em;
+            text-transform: uppercase;
+            color: var(--ink);
+        }
+
+        .segmented {
+            display: inline-flex;
+            gap: 4px;
+            padding: 4px;
+            background: var(--paper);
+            border: 1.5px solid var(--line);
+            border-radius: 999px;
+        }
+
+        .seg {
+            height: 36px;
+            min-width: 66px;
+            padding: 0 16px;
+            border: none;
+            background: transparent;
+            border-radius: 999px;
+            font: inherit;
+            font-size: 13px;
+            font-weight: 800;
+            letter-spacing: 0.05em;
+            color: var(--muted);
+            cursor: pointer;
+            transition: background-color 200ms ease, color 200ms ease, box-shadow 200ms ease;
+        }
+
+        @media (hover: hover) {
+            .seg:hover:not(.is-active) { color: var(--ink); background: #F3F1F8; }
+        }
+
+        .seg.is-active {
+            background: var(--violet);
+            color: #FFFFFF;
+            box-shadow: 0 2px 0 var(--violet-dark);
+        }
+
+        .seg:focus-visible {
+            outline: 2px solid var(--violet);
+            outline-offset: 2px;
+        }
+
+        button[type="submit"] {
+            margin-top: 18px;
+            width: 100%;
+            min-height: 54px;
+            padding: 0 8px 0 clamp(16px, 5vw, 24px);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            font: inherit;
+            font-size: 15px;
+            font-weight: 800;
+            letter-spacing: -0.01em;
+            color: #FFFFFF;
+            background: var(--violet);
+            border: none;
+            border-radius: 999px;
+            box-shadow: 0 3px 0 var(--violet-dark);
+            cursor: pointer;
+            transition: box-shadow 160ms ease-out, transform 160ms ease-out, background-color 200ms ease;
+        }
+
+        @media (hover: hover) {
+            button[type="submit"]:hover {
+                background: #6A4BE0;
+                box-shadow: 0 3px 0 var(--violet-dark), 0 10px 30px rgba(116, 85, 232, 0.35);
+            }
+        }
+
+        button[type="submit"]:active {
+            transform: translateY(3px);
+            box-shadow: 0 0 0 var(--violet-dark);
+        }
+
+        button[type="submit"]:focus-visible {
+            outline: 2px solid var(--ink);
+            outline-offset: 3px;
+        }
+
+        button[type="submit"][aria-busy="true"] {
+            cursor: progress;
+        }
+
+        button[type="submit"]:disabled { opacity: 0.85; }
+
+        .disc {
+            display: grid;
+            place-items: center;
+            width: 34px;
+            height: 34px;
+            flex: none;
+            border-radius: 50%;
+            background: #FFFFFF;
+            color: var(--violet);
+        }
+
+        .disc svg { display: block; }
+
+        .spin {
+            width: 15px;
+            height: 15px;
+            border: 2.5px solid rgba(255, 255, 255, 0.35);
+            border-top-color: #FFFFFF;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            flex: none;
+        }
+
+        .spin.dark {
+            border-color: rgba(116, 85, 232, 0.25);
+            border-top-color: var(--violet);
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .status {
+            display: none;
+            align-items: center;
+            gap: 9px;
+            margin-top: 16px;
+            padding: 11px 15px;
+            border-radius: 14px;
+            font-size: 13px;
+            line-height: 1.4;
+            font-weight: 700;
+            letter-spacing: -0.01em;
+        }
+
+        .status.show { display: flex; }
+
+        .status span {
+            overflow-wrap: anywhere;
+            min-width: 0;
+        }
+
+        .status.loading { background: var(--violet-wash); color: var(--violet-dark); }
+        .status.success { background: var(--gain-wash); color: var(--gain); }
+        .status.error   { background: var(--danger-wash); color: var(--danger); }
+
+        .status svg { flex: none; }
+
+        .again {
+            display: none;
+            margin-top: 14px;
+            padding-left: 2px;
+            font-size: 14px;
+            font-weight: 800;
+        }
+
+        .again.show { display: inline-flex; }
+
+        .again a {
+            color: var(--violet);
+            text-decoration: none;
+        }
+
+        .again a:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+        @media (max-width: 480px) {
+            .card { padding: 24px 20px; }
+        }
+
+        @media (max-width: 360px) {
+            .card { padding: 20px 16px; }
+            h1 { letter-spacing: -0.03em; }
+            .chip { height: 24px; padding: 0 10px; font-size: 10px; margin-bottom: 14px; }
+            .sub { font-size: 14px; margin-bottom: 20px; }
+            button[type="submit"] { height: 52px; font-size: 14px; }
+        }
+
+        @media (min-width: 768px) {
+            .card { max-width: 560px; padding: 44px; }
+            h1 { font-size: 44px; }
+        }
+
+        @media (max-height: 560px) and (orientation: landscape) {
+            body { padding-top: 16px; padding-bottom: 16px; align-items: flex-start; }
+            .card { padding-top: 18px; padding-bottom: 18px; }
+            .chip { margin-bottom: 10px; }
+            h1 { font-size: clamp(24px, 6vh, 30px); }
+            .sub { margin-bottom: 14px; }
+            button[type="submit"] { margin-top: 12px; min-height: 48px; }
+            .status { margin-top: 10px; }
+        }
+
+        @media (hover: none) {
+            button[type="submit"]:active { transform: translateY(3px); }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .card > * { animation: none; }
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                transition-duration: 0.01ms !important;
+            }
+            .spin { border-top-color: #FFFFFF; border-right-color: #FFFFFF; }
+        }
+    </style>
+</head>
+<body>
+    <main class="card">
+        <span class="chip">1,000+ sites</span>
+        <h1>Video Downloader</h1>
+        <p class="sub">Paste any video link, click download, get a playable MP4.</p>
+
+        <form id="downloadForm" novalidate>
+            <label for="videoUrl">Video URL</label>
+            <input type="text" id="videoUrl" name="url" inputmode="url" autocomplete="url"
+                   spellcheck="false" placeholder="Paste any video link…"
+                   aria-describedby="urlHelp" required>
+            <p class="helper" id="urlHelp">Works with any supported platform, no limits.</p>
+            <div class="format-row">
+                <span class="fmt-label" id="formatLabel">Format</span>
+                <div class="segmented" role="group" aria-labelledby="formatLabel">
+                    <button type="button" class="seg is-active" data-format="mp4" aria-pressed="true">MP4</button>
+                    <button type="button" class="seg" data-format="mp3" aria-pressed="false">MP3</button>
+                </div>
+            </div>
+            <button type="submit" id="submitBtn">
+                <span id="btnLabel">Download MP4</span>
+                <span class="disc" id="btnDisc" aria-hidden="true">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 11 5 5 5-5"/><path d="M4 21h16"/></svg>
+                </span>
+            </button>
+        </form>
+
+        <div id="status" class="status" role="status" aria-live="polite"></div>
+        <div id="again" class="again"><a href="#" id="againLink" download>Download again</a></div>
+    </main>
+
+    <script>
+        const form = document.getElementById('downloadForm');
+        const input = document.getElementById('videoUrl');
+        const btn = document.getElementById('submitBtn');
+        const status = document.getElementById('status');
+        const again = document.getElementById('again');
+        const againLink = document.getElementById('againLink');
+        const urlHelp = document.getElementById('urlHelp');
+        const defaultHelp = urlHelp.textContent;
+
+        const btnLabel = document.getElementById('btnLabel');
+        const btnDisc = document.getElementById('btnDisc');
+        const segs = Array.from(document.querySelectorAll('.seg'));
+
+        const ICON_DOWNLOAD = btnDisc.innerHTML;
+        const ICON_MUSIC = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>';
+
+        let format = 'mp4';
+
+        function loadingVerb() {
+            return format === 'mp3' ? 'Extracting audio' : 'Fetching and converting';
+        }
+
+        segs.forEach(seg => {
+            seg.addEventListener('click', () => {
+                format = seg.dataset.format;
+                segs.forEach(s => {
+                    const on = s === seg;
+                    s.classList.toggle('is-active', on);
+                    s.setAttribute('aria-pressed', String(on));
+                });
+                btnLabel.textContent = 'Download ' + format.toUpperCase();
+                btnDisc.innerHTML = format === 'mp3' ? ICON_MUSIC : ICON_DOWNLOAD;
+            });
+        });
+
+        const ICON_SPINNER = '<span class="spin dark" aria-hidden="true"></span>';
+        const ICON_CHECK = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
+        const ICON_ALERT = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>';
+
+        let tickTimer = null;
+        let lastObjectUrl = null;
+        let statusText = null;
+
+        function setStatus(type, text) {
+            if (status.dataset.type !== type) {
+                status.className = 'status show ' + type;
+                status.dataset.type = type;
+                status.innerHTML = '';
+                const icon = type === 'loading' ? ICON_SPINNER : (type === 'success' ? ICON_CHECK : ICON_ALERT);
+                status.insertAdjacentHTML('beforeend', icon);
+                statusText = document.createElement('span');
+                status.appendChild(statusText);
+            }
+            if (statusText) statusText.textContent = text;
+        }
+
+        function hideStatus() {
+            status.className = 'status';
+            status.dataset.type = '';
+            status.innerHTML = '';
+            statusText = null;
+        }
+
+        function startLoading() {
+            btn.setAttribute('aria-busy', 'true');
+            btn.disabled = true;
+            if (!btn.querySelector('.spin')) {
+                const s = document.createElement('span');
+                s.className = 'spin';
+                s.setAttribute('aria-hidden', 'true');
+                btn.prepend(s);
+            }
+            const started = Date.now();
+            setStatus('loading', `${loadingVerb()}… 0s`);
+            tickTimer = setInterval(() => {
+                const s = Math.floor((Date.now() - started) / 1000);
+                setStatus('loading', `${loadingVerb()}… ${s}s`);
+            }, 1000);
+        }
+
+        function stopLoading() {
+            btn.removeAttribute('aria-busy');
+            btn.disabled = false;
+            const s = btn.querySelector('.spin');
+            if (s) s.remove();
+            clearInterval(tickTimer);
+        }
+
+        function normalizeUrl(raw) {
+            let v = raw.trim();
+            if (!v) return '';
+            if (/^[a-z][a-z0-9+.-]*:/i.test(v)) return v;
+            if (!/\s/.test(v) && v.includes('.')) return 'https://' + v;
+            return v;
+        }
+
+        function filenameFromDisposition(disp) {
+            if (!disp) return 'video.mp4';
+            const star = disp.match(/filename\*=UTF-8''([^;]+)/i);
+            if (star) { try { return decodeURIComponent(star[1]); } catch (e) {} }
+            const plain = disp.match(/filename="?([^";]+)"?/i);
+            return plain ? plain[1] : 'video.mp4';
+        }
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const url = normalizeUrl(input.value);
+            if (!url) {
+                input.setAttribute('aria-invalid', 'true');
+                urlHelp.textContent = 'Paste a link first.';
+                urlHelp.style.color = 'var(--danger)';
+                input.focus();
+                return;
+            }
+            input.removeAttribute('aria-invalid');
+            urlHelp.textContent = defaultHelp;
+            urlHelp.style.color = '';
+
+            hideStatus();
+            again.classList.remove('show');
+            if (lastObjectUrl) { URL.revokeObjectURL(lastObjectUrl); lastObjectUrl = null; }
+            startLoading();
+
+            try {
+                const response = await fetch('/download', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url, format })
+                });
+
+                const contentType = (response.headers.get('Content-Type') || '').toLowerCase();
+
+                if (!response.ok || contentType.includes('json')) {
+                    let message = 'Request failed (' + response.status + ')';
+                    try {
+                        const data = await response.json();
+                        if (data && data.error) message = data.error;
+                    } catch (err) {}
+                    throw new Error(message);
+                }
+
+                const blob = await response.blob();
+                const filename = filenameFromDisposition(response.headers.get('Content-Disposition'));
+
+                lastObjectUrl = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = lastObjectUrl;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+
+                againLink.href = lastObjectUrl;
+                againLink.download = filename;
+                again.classList.add('show');
+                stopLoading();
+                setStatus('success', 'Saved to your Downloads folder — ' + filename);
+            } catch (err) {
+                stopLoading();
+                const msg = (err && err.message) || 'Something went wrong.';
+                const networkFail = err instanceof TypeError && /fetch|network/i.test(msg);
+                setStatus('error', networkFail
+                    ? 'Connection lost during processing. Please try again.'
+                    : msg);
+            }
+        });
+    </script>
+</body>
+</html>
